@@ -97,19 +97,19 @@ public final class VoskBridge {
         catch (Throwable t) { return false; }
     }
 
-    /** Default the custom wake word to «你好» so users can activate the assistant by saying "нихао".
+    /** Default the custom wake word to «小安» so users can activate the assistant by saying "сяоань".
      *  Stored in Settings.Global "voice_custom_name"; a ContentObserver re-registers it with the IVW
      *  engine. Only set when empty — never clobber a word the user chose. App is uid=system → allowed. */
     static void ensureCustomWakeword() {
         try {
-            // Apply the «你好» default ONCE (first run after install), then respect the user's choice —
+            // Apply the «小安» default ONCE (first run after install), then respect the user's choice —
             // a marker in our prefs guards it so we never clobber a word the user later sets in Settings.
             android.content.SharedPreferences sp = appCtx.getSharedPreferences("stand", 0);
             if (sp.getBoolean("wakeword_defaulted", false)) return;
             android.content.ContentResolver cr = appCtx.getContentResolver();
-            boolean ok = android.provider.Settings.Global.putString(cr, "voice_custom_name", "你好"); // 你好
+            boolean ok = android.provider.Settings.Global.putString(cr, "voice_custom_name", "小安"); // 小安
             sp.edit().putBoolean("wakeword_defaulted", true).apply();
-            Log.i(TAG, "wakeword: default «你好» applied once (" + ok + ")");
+            Log.i(TAG, "wakeword: default «小安» applied once (" + ok + ")");
         } catch (Throwable t) { Log.e(TAG, "ensureCustomWakeword", t); }
     }
 
@@ -711,11 +711,11 @@ public final class VoskBridge {
     static String zh2ruCore(String s) {
         switch (s) {
             // --- assistant tips: wakeup / barge-in / sleep / reject (learning) / easter-egg ---
-            case "我在": case "在呢": return "Я слушаю";
+            case "我在": case "在呢": return "Я здесь";
             case "我来了": case "来了": case "我在这儿呢": return "Я здесь";
             case "有什么可以帮您": return "Чем могу помочь";
-            case "请说": return "Я слушаю";
-            case "你说": case "你先": case "你先说": return "Я слушаю";
+            case "请说": return "Я здесь";
+            case "你说": case "你先": case "你先说": return "Я здесь";
             case "再见啦": return "До свидания";
             case "有事再喊我": return "Позовите, если что понадобится";
             case "下次再见": return "До встречи";

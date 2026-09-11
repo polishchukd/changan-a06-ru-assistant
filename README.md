@@ -65,7 +65,7 @@ adb shell pm install -r -d -g -t /data/local/tmp/sa.apk
 adb shell am force-stop com.incall.apps.speechassistant
 ```
 
-Wake with **«нихао» (你好)** and speak, e.g. «включи климат», «какая погода в шанхае».
+Wake with **«сяоань» (小安)** and speak, e.g. «включи климат», «какая погода в шанхае».
 
 ## Uninstall / revert to factory
 
