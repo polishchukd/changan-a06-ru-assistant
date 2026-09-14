@@ -1,23 +1,26 @@
 # Model weights not tracked by git
 
-Two model files exceed GitHub's 100 MB per‑file limit and are therefore **excluded from git**
-(see `.gitignore`). They are required to build. Place them at exactly these paths:
+One model file exceeds GitHub's 100 MB per‑file limit and is therefore **excluded from git**
+(see `.gitignore`). It is required to build. Place it at exactly this path:
 
 | File                               | Size   | Path                                                                  |
 |------------------------------------|--------|-----------------------------------------------------------------------|
-| GigaAM‑v3 CTC (int8)               | 214 MB | `stand/asr-android/gigaam/model.int8.onnx`                            |
 | TeraTTS distilled sampler (4‑step) | 245 MB | `tools/tera-tts-java/assets/models/sampler_distilled_cfg3_4step.onnx` |
 
-All the other model files (TeraTTS `text_encoder` / `duration_predictor` / `vocoder`, the tokens, styles,
-accent dict, and the JNI `.so` libs) are under the limit and **are** committed.
+All the other model files **are** committed, including the ASR model:
+
+- **Vosk small‑RU** (`vosk-model-small-ru-0.22`, ~88 MB) — the offline Russian ASR engine, at
+  `stand/asr-android/vosk-model/`. Every file inside is under 100 MB (largest: `graph/HCLr.fst`, 32 MB),
+  so the whole tree is tracked by git.
+- TeraTTS `text_encoder` / `duration_predictor` / `vocoder`, the tokens, styles, accent dict, and the
+  JNI `.so` libs (`libvosk.so`, `libjnidispatch.so`, `libonnxruntime4j_jni.so`).
 
 ## Where to get them
 
-- **GigaAM‑v3** — export/convert from the upstream repo
-  <https://github.com/salute-developers/GigaAM> to a sherpa‑onnx int8 CTC `model.int8.onnx`
-  (the `is_giga_am` metadata + 64‑mel feature config must be present).
+- **Vosk small‑RU** — <https://alphacephei.com/vosk/models> → `vosk-model-small-ru-0.22.zip`,
+  unpacked so that `am/`, `graph/`, `ivector/`, `conf/` sit directly under `stand/asr-android/vosk-model/`.
 - **TeraTTS sampler** — from the upstream TeraTTS / TeraSpace weights
   <https://github.com/Tera2Space/TeraTTS> · <https://huggingface.co/TeraSpace>.
 
-If you distribute a release, attach these two files as **release assets** (or use Git LFS) rather than
-committing them.
+If you distribute a release, attach the TeraTTS sampler as a **release asset** (or use Git LFS) rather
+than committing it.

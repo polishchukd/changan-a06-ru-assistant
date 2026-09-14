@@ -27,10 +27,10 @@ echo "[1/2] compiling com/stand/** -> classes7.dex"
 bash "$HERE/stand/asr-android/build_dex.sh"
 
 echo "[2/2] patching + repacking + signing (platform test-keys)"
-# Flags = the shipped v1.0.2 "online" profile: GigaAM ASR + TeraTTS + ru2zh->stock NLU, real Changan
+# Flags = the shipped "online" profile: Vosk small-RU ASR + TeraTTS + ru2zh->stock NLU, real Changan
 # cloud reachable (NATIVE_CLOUD) with MyMemory translation, our RU text kept in dialog (CAPTURE).
 PROFILE=car HOST=127.0.0.1:8080 RUSSIAN_ASR=1 NO_CN_SR=1 NO_CN_ENGINE=0 \
-  VOSK=1 PIPER=1 TERA=1 GIGAAM=1 TTS_HOOK=0 TTS_REWRITE=1 \
+  VOSK=1 PIPER=1 TERA=1 VOSK_MODEL=1 TTS_HOOK=0 TTS_REWRITE=1 \
   NATIVE_CLOUD=1 CAPTURE=1 \
   bash "$HERE/stand/build_sa.sh" "$SRC" "$OUT"
 

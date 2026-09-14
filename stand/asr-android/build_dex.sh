@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Compile com/stand/** (vosk + tts) + sherpa-onnx java-api (+ vosk/jna jars) into
+# Compile com/stand/** (vosk + tts) + vosk/jna jars into
 # build/vosk7/classes.dex (=> classes7.dex).
 set -euo pipefail
 D="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -31,8 +31,6 @@ BT="${BUILD_TOOLS_DIR:-$(ls -d "$ANDROID_HOME"/build-tools/* 2>/dev/null | sort 
 [ -f "$AJAR" ] || { echo "android.jar not found at $AJAR — set ANDROID_HOME (needs platforms;android-34)"; exit 1; }
 [ -x "$BT/d8" ] || { echo "d8 not found in $BT — install Android build-tools (34.0.0+)"; exit 1; }
 rm -rf "$D/build/vosk7" "$D/build/stubs"; mkdir -p "$D/build/vosk7" "$D/build/stubs"
-# sherpa-onnx java sources are optional (only needed for Piper TTS); include if present.
-SHERPA_SRC=""; [ -d "$D/sherpa-src" ] && SHERPA_SRC="$(find "$D/sherpa-src" -name '*.java')"
 # COMPILE-ONLY stubs of the app's own interfaces (ICaTts/ICaStreamTts/ICaTtsCallback for PiperCaTts).
 # Compiled to build/stubs and put ONLY on the classpath — NOT fed to d8 (would duplicate app classes).
 STUB_CP=""
@@ -45,7 +43,7 @@ fi
 ORT_JAR="$D/libs/ort-android-classes.jar"; [ -f "$ORT_JAR" ] || ORT_JAR=""
 javac -source 17 -target 17 -d "$D/build/vosk7" \
   -classpath "$AJAR:$D/libs/vosk-classes.jar:$D/libs/jna-classes.jar:$ORT_JAR$STUB_CP" \
-  $(find "$D/src/com/stand" -name '*.java') $SHERPA_SRC
+  $(find "$D/src/com/stand" -name '*.java')
 "$BT/d8" --min-api 29 --lib "$AJAR" --output "$D/build/vosk7" \
   $(find "$D/build/vosk7" -name '*.class') "$D/libs/vosk-classes.jar" "$D/libs/jna-classes.jar" ${ORT_JAR:+"$ORT_JAR"}
 echo "classes7.dex: $(ls -la "$D/build/vosk7/classes.dex" | awk '{print $5}') bytes"

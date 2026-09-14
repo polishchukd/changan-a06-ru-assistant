@@ -10,8 +10,9 @@ Independent modification — **not affiliated with, endorsed by, or produced by 
 
 ## What it does
 
-- **Offline Russian ASR** — [GigaAM‑v3](https://github.com/salute-developers/GigaAM) CTC (sherpa‑onnx),
-  full‑utterance decode. Open‑vocabulary + a Levenshtein fuzzy‑correction pass for command words.
+- **Offline Russian ASR** — [Vosk](https://alphacephei.com/vosk/models) `vosk-model-small-ru-0.22`
+  (Kaldi, ~88 MB), full‑utterance decode. Open‑vocabulary + a Levenshtein fuzzy‑correction pass for
+  command words.
 - **Russian TTS** — [TeraTTS](https://github.com/Tera2Space/TeraTTS) (`ru_f2`, ONNX Runtime),
   registered as a native TTS engine so the whole assistant speaks Russian.
 - **Command routing (`ru2zh`)** — a rule‑based Russian→Chinese mapper turns recognized phrases into
@@ -84,11 +85,11 @@ build.sh                     one-shot: compile classes7 + patch/repack/sign
 stand/build_sa.sh            baksmali -> patch smali -> add classes7/assets/libs -> zipalign -> sign
 stand/env.sh                 toolchain + platform-key paths
 stand/asr-android/           our code + models
-  src/com/stand/**           VoskBridge (ASR tap, ru2zh, cloud), GigaAsr, TeraTts, Translate, ...
+  src/com/stand/**           VoskBridge (ASR tap, ru2zh, cloud), VoskAsr, TeraTts, Translate, ...
   build_dex.sh               javac + d8 -> classes7.dex
-  gigaam/                    GigaAM-v3 int8 ONNX model + tokens
-  piper/jni/arm64-v8a/       sherpa-onnx + onnxruntime JNI libs
-  libs/ src-stubs/ sherpa-src/  compile-time deps
+  vosk-model/                Vosk small-RU ASR model (am/ graph/ ivector/ conf/)
+  piper/jni/arm64-v8a/       libvosk + libjnidispatch + onnxruntime JNI libs
+  libs/ src-stubs/              compile-time deps
 tools/                       baksmali/smali/uber-apk-signer jars, AOSP test-keys, TeraTTS assets
 ru2zh/translate-task/ru2zh_extended.java   the ru2zh command table (spliced into VoskBridge.java)
 ```

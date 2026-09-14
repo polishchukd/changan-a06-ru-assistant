@@ -12,8 +12,11 @@ SpeechAssistant*.apk
 
 # large model weights (> GitHub's 100 MB/file limit) — see MODELS.md.
 # They stay on disk so the local build works; they are just not tracked by git.
-stand/asr-android/gigaam/model.int8.onnx
+# (Vosk small-RU model is now the ASR engine and IS tracked — every file is < 100 MB.)
 tools/tera-tts-java/assets/models/sampler_distilled_cfg3_4step.onnx
+
+# local scratch (downloaded SDK/model archives, not part of the build)
+downloads/
 
 # os / editor
 .DS_Store

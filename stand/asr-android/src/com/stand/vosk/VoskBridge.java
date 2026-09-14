@@ -237,10 +237,11 @@ public final class VoskBridge {
     // Requires a NATIVE_CLOUD build (else the endpoint is redirected to a dead 127.0.0.1).
     private static final boolean CLOUD_INJECT = false;
 
-    // ---- ASR: GigaAM-v3 (sherpa-onnx offline CTC) ------------------------------------------------
-    // GigaAM-v3 CTC is a full-utterance Conformer (no streaming): we accumulate the whole utterance
-    // (wp==1..wp==3) and decode it once at the end via com.stand.asr.GigaAsr, yielding a single
-    // hypothesis. That text is fuzzy-corrected against GRAMMAR_WORDS (see chooseQuery / fuzzyFix).
+    // ---- ASR: Vosk small-RU (Kaldi, batch mode) --------------------------------------------------
+    // Vosk is a streaming Kaldi recognizer, but we drive it in batch mode: we feed the whole
+    // utterance (wp==1..wp==3) and read the final result once at the end via com.stand.asr.VoskAsr,
+    // yielding a single hypothesis. That text is fuzzy-corrected against GRAMMAR_WORDS (see
+    // chooseQuery / fuzzyFix).
     //
     // ---- ASR strategy: open vocabulary + fuzzy correction ----------------------------------------
     // The decoder is open-vocabulary (no grammar restriction). GRAMMAR_WORDS is NOT a grammar — it is
@@ -441,7 +442,7 @@ public final class VoskBridge {
         return prev[m];
     }
 
-    /** Choose the phrase to act on from the single GigaAM hypothesis: the RAW text if ru2zh understands
+    /** Choose the phrase to act on from the single ASR hypothesis: the RAW text if ru2zh understands
      *  it (keeps names / free-text intact), else the FUZZY-corrected text if that is understood (rescue),
      *  else the fuzzy-cleaned text — which falls through to the offline stub / chat. */
     static String chooseQuery(String text) {
@@ -460,7 +461,7 @@ public final class VoskBridge {
         Log.i(TAG, NOTICE);   // emit legal notice (also anchors the string into the dex)
         try { if (!com.stand.core.Guard.verify()) Log.w(TAG, com.stand.core.Guard.LICENSE); } catch (Throwable ignored) {}
         // VoiceApp.onCreate runs in EVERY process (main, :tts, :voiceprint), so init runs 3×. Load each
-        // heavy model only in the process that actually uses it — otherwise GigaAM (~224 MB) and TeraTTS
+        // heavy model only in the process that actually uses it — otherwise Vosk (~88 MB) and TeraTTS
         // (~300 MB) get loaded 3 times (measured: :voiceprint ballooned to ~686 MB for nothing).
         boolean mainProc = isMainProcess();
         boolean ttsProc  = isTtsProcess();
@@ -468,9 +469,9 @@ public final class VoskBridge {
         // TeraTTS is loaded ONLY in :tts (PiperCaTts synthesizes there). main speaks via GlobalTtsClient,
         // which routes to the :tts engine, so main needs no ~300 MB Tera copy of its own.
         if (ttsProc) { try { com.stand.tts.TeraTts.init(appCtx); } catch (Throwable ignored) {} }
-        // GigaAM ASR: the audio-callback feed (SrBaseSession) only runs in the main process.
+        // ASR (Vosk small-RU): the audio-callback feed (SrBaseSession) only runs in the main process.
         if (mainProc) {
-            try { com.stand.asr.GigaAsr.init(appCtx); } catch (Throwable t) { Log.e(TAG, "gigaam init", t); }
+            try { com.stand.asr.VoskAsr.init(appCtx); } catch (Throwable t) { Log.e(TAG, "vosk init", t); }
             new Thread(new Runnable() { public void run() {
                 try {   // prime backend dicts + status
                     try { Thread.sleep(4000); } catch (Throwable ignored) {}
@@ -482,21 +483,21 @@ public final class VoskBridge {
     }
 
     /** Called from SrBaseSession ASR-data callback. session=this (unused); wp=phase; inst=SR instance.
-     *  ASR engine is GigaAM-v3 (offline CTC) — the whole utterance is decoded once at wp==3. */
+     *  ASR engine is Vosk (vosk-model-small-ru-0.22) — the whole utterance is decoded once at wp==3. */
     public static void feed(Object session, int nm, int dt, long wp, byte[] pcm, int inst) {
-        feedGigaam(session, wp, pcm);
+        feedVosk(session, wp, pcm);
     }
 
-    /** GigaAM-v3 path: accumulate the utterance (wp==1..3) and decode once at the end (offline CTC).
+    /** Vosk path: feed the utterance (wp==1..3) and read the final result once at the end.
      *  No streaming/partials — the stock SR gives clean start/end, so no VAD is needed. */
-    private static void feedGigaam(Object session, long wp, byte[] pcm) {
+    private static void feedVosk(Object session, long wp, byte[] pcm) {
         try {
-            if (wp == 1) { com.stand.asr.GigaAsr.reset(); lastText = ""; }
-            if (pcm != null && pcm.length > 0) com.stand.asr.GigaAsr.accept(pcm, pcm.length);
+            if (wp == 1) { com.stand.asr.VoskAsr.reset(); lastText = ""; }
+            if (pcm != null && pcm.length > 0) com.stand.asr.VoskAsr.accept(pcm, pcm.length);
             if (wp == 3) {
                 wakeZone = currentDirect(session, wakeZone); // which seat spoke
-                String text = com.stand.asr.GigaAsr.finish();
-                if (text != null && !text.isEmpty()) Log.i(TAG, "RU ASR (GigaAM): " + text);
+                String text = com.stand.asr.VoskAsr.finish();
+                if (text != null && !text.isEmpty()) Log.i(TAG, "RU ASR (Vosk): " + text);
                 String query = chooseQuery(text == null ? "" : text); // raw, then fuzzyFix
                 if (query != null && !query.isEmpty()) {
                     lastText = query;   // so swap()/CloudNlu surface our RU text, never the native Chinese
@@ -505,7 +506,7 @@ public final class VoskBridge {
                     handlePhraseZh(query); // ru2zh → stock NLU pipeline
                 }
             }
-        } catch (Throwable t) { Log.e(TAG, "feedGigaam", t); }
+        } catch (Throwable t) { Log.e(TAG, "feedVosk", t); }
     }
 
     /** Speak text via the assistant's TTS engine. */
@@ -3006,7 +3007,7 @@ public final class VoskBridge {
     public static String swap(String original) {
         String v = lastText;
         if (v != null && !v.isEmpty()) return v;   // our RU text (Vosk partial, or the final once decoded)
-        // lastText empty = mid-utterance with GigaAM (no streaming partials). Suppress the stock partial
+        // lastText empty = mid-utterance with Vosk (no streaming partials). Suppress the stock partial
         // ENTIRELY — whether Chinese (would flash CJK) or a Russian prefix from the RU-patched iFlytek SR
         // (it leaks e.g. "За" that then doubles with the final → "Зазапусти музыку"). Show only the final.
         return "";

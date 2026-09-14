@@ -37,7 +37,7 @@ SWALLOW=os.environ["SWALLOW"]=="1"; RU=os.environ["RUSSIAN_ASR"]=="1"; TRIG=os.e
 CAPTURE=os.environ["CAPTURE"]=="1"   # diagnostic: send authentic ZH to real Dubhe + log outgoing query
 VOSK=os.environ["VOSK"]=="1"; NATIVE_CLOUD=os.environ["NATIVE_CLOUD"]=="1"
 NO_CN_SR=os.environ.get("NO_CN_SR")=="1"  # cut the iFlytek SR feed (no Mandarin recognition / no cloud upload)
-NO_CN_ENGINE=os.environ.get("NO_CN_ENGINE")=="1"  # never start the iFlytek IAT engine (no Mandarin model load/decode) — frees CPU+RAM for GigaAM
+NO_CN_ENGINE=os.environ.get("NO_CN_ENGINE")=="1"  # never start the iFlytek IAT engine (no Mandarin model load/decode) — frees CPU+RAM for Vosk
 TTS_REWRITE=os.environ.get("TTS_REWRITE")=="1"  # rewrite ALL TtsPlayer.start text CJK->RU (catches NLG responses that play via the stock engine, e.g. brightness 好的,中控屏已调亮)
 TTS_HOOK=os.environ.get("TTS_HOOK")=="1"  # intercept TtsPlayer.start -> VoskBridge.onTtsText (ZH->RU + Piper)
 b6=SM6+"/com/incall/apps"
@@ -158,7 +158,7 @@ if VOSK:
         skip="    const/4 p0, 0x0\n    return p0\n"
         s=s[:m_sr.end()]+skip+s[m_sr.end():]
     # NO_CN_SR: drop NATIVE SR results at the SR result listener. The iFlytek engine still decodes
-    # Mandarin (it shares the SE audio hub IICaSr we tap for GigaAM, so we can't starve it), and its
+    # Mandarin (it shares the SE audio hub IICaSr we tap for Vosk, so we can't starve it), and its
     # result reaches the pipeline here via processVts()/DuplicateWakeUpManager — a path our
     # NluManager.onArbitrationResult guard does NOT cover, so Chinese results were interfering. Our own
     # ASR bypasses this listener (injectZh -> NluManager.onFinalAsrResult directly), so dropping every
@@ -262,18 +262,21 @@ java -jar "$PROJ_DIR/tools/smali.jar" a --api 34 "$wd/smali6" -o "$wd/classes6.d
 cp "$SRC" "$wd/_p.apk"; ( cd "$wd" && zip -j -q _p.apk classes5.dex classes6.dex )
 if [ "${VOSK:-0}" = "1" ]; then
   VDIR="$STAND_DIR/asr-android"
-  echo "[build_sa] +VOSK: classes7.dex only (ASR=GigaAM, TTS=TeraTTS; Vosk model+libvosk.so/libjnidispatch.so dropped)"
+  echo "[build_sa] +VOSK: classes7.dex (ASR=Vosk small-RU, TTS=TeraTTS)"
   cp "$VDIR/build/vosk7/classes.dex" "$wd/classes7.dex"
   ( cd "$wd" && zip -j -q _p.apk classes7.dex )
 fi
 
-# --- PIPER (repurposed): now ONLY the shared native JNI libs — libsherpa-onnx-jni.so (GigaAM ASR)
-#     + libonnxruntime4j_jni.so (TeraTTS). Piper RU TTS model dropped (TeraTTS is the sole voice). ---
+# --- PIPER (repurposed): now ONLY the shared native JNI libs — libvosk.so + libjnidispatch.so
+#     (Vosk ASR) + libonnxruntime4j_jni.so (TeraTTS). libsherpa-onnx-jni.so dropped (GigaAM gone).
+#     Piper RU TTS model dropped (TeraTTS is the sole voice). ---
 if [ "${PIPER:-0}" = "1" ]; then
   PDIR="$STAND_DIR/asr-android/piper"
-  echo "[build_sa] +JNI: sherpa-onnx + onnxruntime4j libs (no Piper model — TeraTTS is the voice)"
+  echo "[build_sa] +JNI: vosk + jnidispatch + onnxruntime4j libs (no Piper model — TeraTTS is the voice)"
   mkdir -p "$wd/lib/arm64-v8a"
-  cp "$PDIR/jni/arm64-v8a/"*.so "$wd/lib/arm64-v8a/"
+  for so in libvosk.so libjnidispatch.so libonnxruntime4j_jni.so; do
+    [ -f "$PDIR/jni/arm64-v8a/$so" ] && cp "$PDIR/jni/arm64-v8a/$so" "$wd/lib/arm64-v8a/"
+  done
   ( cd "$wd" && zip -q -0 -r _p.apk lib )
 fi
 
@@ -289,15 +292,16 @@ if [ "${TERA:-0}" = "1" ]; then
   ( cd "$wd" && zip -q -0 -r _p.apk assets/tera )
 fi
 
-# --- GIGAAM: GigaAM-v3 CTC offline ASR (sherpa-onnx) -> assets/gigaam (~224MB int8, stored).
-#     Replaces Vosk as the recognizer (VoskBridge.ENGINE_GIGAAM=true). Needs VOSK=1 (classes7 has
-#     GigaAsr + the smali feed tap) and PIPER=1 (bundles libsherpa-onnx-jni.so from piper/jni). ---
-if [ "${GIGAAM:-0}" = "1" ]; then
-  GDIR="$STAND_DIR/asr-android/gigaam"
-  echo "[build_sa] +GIGAAM: GigaAM-v3 CTC model (~224MB, stored)"
-  rm -rf "$wd/assets/gigaam"; mkdir -p "$wd/assets/gigaam"
-  cp "$GDIR/model.int8.onnx" "$GDIR/tokens.txt" "$wd/assets/gigaam/"
-  ( cd "$wd" && zip -q -0 -r _p.apk assets/gigaam )
+# --- VOSK_MODEL: Vosk small-RU offline ASR (vosk-model-small-ru-0.22) -> assets/vosk-model (~88MB, stored).
+#     The recognizer (VoskBridge.feed -> com.stand.asr.VoskAsr). Needs VOSK=1 (classes7 has VoskAsr +
+#     the smali feed tap) and PIPER=1 (bundles libvosk.so + libjnidispatch.so from piper/jni). ---
+if [ "${VOSK_MODEL:-0}" = "1" ]; then
+  VMDIR="$STAND_DIR/asr-android/vosk-model"
+  echo "[build_sa] +VOSK_MODEL: Vosk small-RU model (~88MB, stored)"
+  rm -rf "$wd/assets/vosk-model"; mkdir -p "$wd/assets/vosk-model"
+  cp -r "$VMDIR/." "$wd/assets/vosk-model/"
+  find "$wd/assets/vosk-model" -name '.DS_Store' -delete
+  ( cd "$wd" && zip -q -0 -r _p.apk assets/vosk-model )
 fi
 # --- LICENSE/NOTICE: bundle the legal notice into the APK (assets/NOTICE.txt) so it ships in the
 #     published binary and is visible on unpack. Copyright (c) 2026 Tecrow, PolyForm Noncommercial 1.0.0.
