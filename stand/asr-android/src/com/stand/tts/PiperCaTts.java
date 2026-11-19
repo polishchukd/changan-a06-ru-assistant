@@ -32,10 +32,23 @@ public class PiperCaTts implements ICaStreamTts {
 
     private static final boolean TONE_TEST = false;  // DIAGNOSTIC: emit a 440 Hz beep instead of speech.
     private static final boolean WAKE_CHIME = true;  // wake greeting → stock wakeup.wav chime instead of TTS phrase
+    // Signal mode: play a short success/error tone instead of TeraTTS speech, saving ~370 MB of model
+    // assets and all :tts RSS. Activates automatically when TeraTTS assets are absent (TERA=0 build).
+    // Also force-activatable via system property "signal_tts"=1 (adb shell settings put global signal_tts 1)
+    // for testing without rebuilding.
+    private static final boolean FORCE_SIGNAL_MODE = false;  // build-time override (set true to disable voice entirely)
     private static volatile android.content.Context appCtx;
     private volatile ICaTtsCallback cb;
     private volatile boolean stopReq;
     private volatile boolean begun;
+
+    /** True when signal mode should be used instead of TeraTTS speech.
+     *  Active when FORCE_SIGNAL_MODE (build-time) is true, or TeraTts.isSignalMode() detects
+     *  no models / runtime override `signal_tts`==1. Checked on every sendText call — cheap. */
+    private static boolean signalModeActive() {
+        if (FORCE_SIGNAL_MODE) return true;
+        return TeraTts.isSignalMode();
+    }
 
     /** 600 ms 440 Hz sine as 16-bit mono PCM at RATE — an unmistakable diagnostic tone. */
     private static byte[] tone() {
@@ -68,7 +81,28 @@ public class PiperCaTts implements ICaStreamTts {
         try {
             byte[] pcm;
             if (TONE_TEST) { pcm = tone(); Log.i(TAG, "sendText TONE for: " + text); }
-            else {
+            else if (signalModeActive()) {
+                // ---- SIGNAL MODE: success/error tone instead of TeraTTS speech ----
+                // Failure NLG detected from raw text before ttsTextToRu() (which calls signalLocalFailed()
+                // and returns null, making it indistinguishable from "untranslatable Chinese tip").
+                boolean fail = com.stand.bridge.RuBridge.isFailureNlg(text);
+                String ru = com.stand.bridge.RuBridge.ttsTextToRu(text);
+                byte[] chime = WAKE_CHIME && ru != null && com.stand.bridge.RuBridge.isClickWakeMarker(ru)
+                        ? WakeChime.pcm16(appCtx, RATE) : null;
+                if (chime != null) {
+                    Log.i(TAG, "sendText SIGNAL: key-wake marker -> chime (" + chime.length + " bytes)");
+                    pcm = chime;
+                } else if (fail) {
+                    Log.i(TAG, "sendText SIGNAL: error tone for: [" + text + "]");
+                    pcm = SignalSound.errorPcm(RATE);
+                } else if (ru != null && !ru.trim().isEmpty()) {
+                    Log.i(TAG, "sendText SIGNAL: success tone for: [" + ru + "]");
+                    pcm = SignalSound.successPcm(RATE);
+                } else {
+                    Log.i(TAG, "sendText SIGNAL: untranslatable tip, silent: " + text);
+                    return 0;
+                }
+            } else {
                 String ru = com.stand.bridge.RuBridge.ttsTextToRu(text);  // ZH->RU (tips), Cyrillic passthrough
                 if (ru == null || ru.trim().isEmpty()) { Log.i(TAG, "sendText untranslatable: " + text); return 0; }
                 Log.i(TAG, "sendText: [" + text + "] -> " + ru);
@@ -84,6 +118,13 @@ public class PiperCaTts implements ICaStreamTts {
                     if (WAKE_CHIME && com.stand.bridge.RuBridge.isWakeGreeting(ru)) {
                         byte[] ch = WakeChime.pcm16(appCtx, RATE);
                         if (ch != null) { pcm = WakeChime.mix(pcm, ch); Log.i(TAG, "voice-wake greeting + chime mixed (" + pcm.length + " bytes)"); }
+                    }
+                    // Safety net: if synthesis returned empty (engine not ready / OOM / model error)
+                    // and TeraTTS assets are absent, fall back to the success signal so the driver is
+                    // never left without audible feedback.
+                    if (pcm.length == 0 && TeraTts.isSignalMode()) {
+                        Log.w(TAG, "sendText: synth returned empty + no models → signal fallback: " + ru);
+                        pcm = SignalSound.successPcm(RATE);
                     }
                 }
             }

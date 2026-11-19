@@ -600,6 +600,12 @@ public final class RuBridge {
         lastLocalAttempt = attempt; lastLocalTs = System.currentTimeMillis();
     }
 
+    /** Public: returns true if the stock NLG text signals a failed or unsupported command.
+     *  Used by PiperCaTts.sendText() in signal mode to choose the error tone. */
+    public static boolean isFailureNlg(String s) {
+        return isLocalFailNlg(s) || isNotSupportReply(s);
+    }
+
     /** Native NLG signalling the injected command was NOT understood (unknown intent → dead-cloud fallback).
      *  On this build the native cloud is cut, so this NLG == a failed local command. */
     private static boolean isLocalFailNlg(String s) {

@@ -75,6 +75,25 @@ public final class TeraTts {
         return appCtx;
     }
 
+    /** True when TeraTTS neural engine is loaded and ready for synthesis.
+     *  False when assets/tera is absent (TERA=0 build) or the engine failed to load → callers can
+     *  fall back to SignalSound instead of returning silence. */
+    public static boolean isAvailable() { return engine != null; }
+
+    /** True when signal mode should be used: TeraTTS models absent (TERA=0) OR runtime override
+     *  `adb shell settings put global signal_tts 1`. PiperCaTts + TeraTts.speak both consult this. */
+    public static boolean isSignalMode() {
+        try {
+            if (appCtx != null && android.provider.Settings.Global.getInt(
+                    appCtx.getContentResolver(), "signal_tts", 0) == 1) return true;
+        } catch (Throwable ignored) {}
+        if (appCtx == null) return true;
+        try {
+            String[] l = appCtx.getAssets().list(ASSET_DIR + "/models");
+            return l == null || l.length == 0;
+        } catch (Throwable t) { return true; }
+    }
+
     private static final java.util.concurrent.atomic.AtomicBoolean STARTED =
             new java.util.concurrent.atomic.AtomicBoolean(false);
 
@@ -230,19 +249,48 @@ public final class TeraTts {
 
     public static void speak(final String text) { speak(text, null); }
 
-    /** Synthesize Russian text and play it on a background thread; run onDone after playback. */
+    /** Synthesize Russian text and play it on a background thread; run onDone after playback.
+     *  In signal mode (TERA=0 build, or engine failed to load) plays a success/error tone instead.
+     *  Heuristic: text containing "не умею" / "не понял" / "не могу" / "Записал" → error tone; all
+     *  other texts (LLM answers, NLG confirmations, tips) → success tone. */
     public static void speak(final String text, final Runnable onDone) {
         if (text == null || text.trim().isEmpty()) { if (onDone != null) runQuiet(onDone); return; }
         if (!canSpeak()) { if (onDone != null) runQuiet(onDone); return; }   // wrong process → skip
+        // Signal-mode fallback: no engine → play a tone directly via AudioTrack.
+        final boolean sigMode = isSignalMode();
+        if (sigMode) {
+            new Thread(new Runnable() { public void run() {
+                try {
+                    boolean err = isFailureText(text);
+                    byte[] pcm = err ? SignalSound.errorPcm(RATE) : SignalSound.successPcm(RATE);
+                    Log.i(TAG, "speak signal-mode: " + (err ? "error" : "success") + " tone for: " + text);
+                    if (pcm.length > 0) playPcm(pcm, RATE);
+                } catch (Throwable t) { Log.e(TAG, "speak signal", t); }
+                finally { if (onDone != null) runQuiet(onDone); }
+            }}).start();
+            return;
+        }
         new Thread(new Runnable() { public void run() {
             try {
                 byte[] pcm = synthPcm16(text, RATE);   // ttsNormalize + cache applied inside
-                if (pcm.length == 0) return;
+                if (pcm.length == 0) {
+                    // Engine present but returned empty (transient error) — also use signal if assets gone
+                    if (isSignalMode()) { pcm = SignalSound.successPcm(RATE); }
+                    else return;
+                }
                 playPcm(pcm, RATE);
             } catch (Throwable t) { Log.e(TAG, "speak", t); }
             finally { if (onDone != null) runQuiet(onDone); }
         }}).start();
     }
+
+    /** Heuristic: does this RU text indicate a failure/unknown reply? Used for signal choice. */
+    private static boolean isFailureText(String t) {
+        if (t == null) return false;
+        return t.contains("не умею") || t.contains("не понял") || t.contains("не могу")
+                || t.contains("Записал") || t.contains("не удалось") || t.contains("Пока не");
+    }
+
     private static void runQuiet(Runnable r) { try { r.run(); } catch (Throwable ignored) {} }
 
     /** Stream 16-bit mono PCM through AudioTrack (blocks ~duration+250 ms). */
