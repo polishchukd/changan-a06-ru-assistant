@@ -351,6 +351,16 @@ if [ "${WAKE_CHIME:-1}" = "1" ] && [ -f "$STAND_DIR/asr-android/assets/wake_chim
   ( cd "$wd" && zip -q _p.apk assets/stand/wake_chime.wav )
   echo "[build_sa] +wake chime: assets/stand/wake_chime.wav"
 fi
+# --- SIGNAL WAV: owner-provided ok/err sounds (~340 KB raw, deflate-compressed in APK) -> assets/stand/
+#     signal_{success,error}.wav (SignalSound loads them; falls back to synthesized tones if absent).
+#     Shipped in ALL builds so the runtime `settings put global signal_tts 1` toggle uses real sounds too.
+for sig in success error; do
+  if [ -f "$STAND_DIR/asr-android/assets/signal_$sig.wav" ]; then
+    mkdir -p "$wd/assets/stand"; cp "$STAND_DIR/asr-android/assets/signal_$sig.wav" "$wd/assets/stand/signal_$sig.wav"
+    ( cd "$wd" && zip -q _p.apk "assets/stand/signal_$sig.wav" )
+    echo "[build_sa] +signal sound: assets/stand/signal_$sig.wav"
+  fi
+done
 
 # --- LICENSE/NOTICE: bundle the legal notice into the APK (assets/NOTICE.txt) so it ships in the
 #     published binary and is visible on unpack. Copyright (c) 2026 Tecrow, PolyForm Noncommercial 1.0.0.

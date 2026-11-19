@@ -94,10 +94,10 @@ public class PiperCaTts implements ICaStreamTts {
                     pcm = chime;
                 } else if (fail) {
                     Log.i(TAG, "sendText SIGNAL: error tone for: [" + text + "]");
-                    pcm = SignalSound.errorPcm(RATE);
+                    pcm = SignalSound.errorPcm(appCtx, RATE);
                 } else if (ru != null && !ru.trim().isEmpty()) {
                     Log.i(TAG, "sendText SIGNAL: success tone for: [" + ru + "]");
-                    pcm = SignalSound.successPcm(RATE);
+                    pcm = SignalSound.successPcm(appCtx, RATE);
                 } else {
                     Log.i(TAG, "sendText SIGNAL: untranslatable tip, silent: " + text);
                     return 0;
@@ -124,7 +124,7 @@ public class PiperCaTts implements ICaStreamTts {
                     // never left without audible feedback.
                     if (pcm.length == 0 && TeraTts.isSignalMode()) {
                         Log.w(TAG, "sendText: synth returned empty + no models → signal fallback: " + ru);
-                        pcm = SignalSound.successPcm(RATE);
+                        pcm = SignalSound.successPcm(appCtx, RATE);
                     }
                 }
             }

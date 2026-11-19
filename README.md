@@ -125,7 +125,7 @@
 | `BRIDGE=1` | добавить `classes7.dex` и все хуки RuBridge |
 | `GIGAAM=1` | модель GigaAM в `assets/gigaam` |
 | `TERA=1` | ассеты TeraTTS в `assets/tera` |
-| `SIGNAL=1` | сигналы «успех/ошибка» вместо речи: НЕ класть ассеты TeraTTS (~370 МБ) и `libonnxruntime4j_jni.so` (~760 КБ); в рантайме переключается `adb shell settings put global signal_tts 1` |
+| `SIGNAL=1` | сигналы «успех/ошибка» вместо речи: НЕ класть ассеты TeraTTS (~370 МБ) и `libonnxruntime4j_jni.so` (~760 КБ); в рантайме переключается `adb shell settings put global signal_tts 1`. Звуки — WAV-ассеты `assets/stand/signal_{success,error}.wav` (кладутся во все сборки, ~180 КБ в APK сжатые; при отсутствии ассета синтезируются тоны) |
 | `PIPER=1` | JNI‑библиотеки sherpa‑onnx и onnxruntime (историческое имя флага) |
 | `NO_CN_SR=1` | отключить китайское распознавание, оставить wake‑word |
 | `TTS_REWRITE=1` | переписывать текст TTS с китайского на русский |

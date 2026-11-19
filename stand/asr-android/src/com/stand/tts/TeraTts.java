@@ -262,7 +262,7 @@ public final class TeraTts {
             new Thread(new Runnable() { public void run() {
                 try {
                     boolean err = isFailureText(text);
-                    byte[] pcm = err ? SignalSound.errorPcm(RATE) : SignalSound.successPcm(RATE);
+                    byte[] pcm = err ? SignalSound.errorPcm(appCtx, RATE) : SignalSound.successPcm(appCtx, RATE);
                     Log.i(TAG, "speak signal-mode: " + (err ? "error" : "success") + " tone for: " + text);
                     if (pcm.length > 0) playPcm(pcm, RATE);
                 } catch (Throwable t) { Log.e(TAG, "speak signal", t); }
@@ -275,7 +275,7 @@ public final class TeraTts {
                 byte[] pcm = synthPcm16(text, RATE);   // ttsNormalize + cache applied inside
                 if (pcm.length == 0) {
                     // Engine present but returned empty (transient error) — also use signal if assets gone
-                    if (isSignalMode()) { pcm = SignalSound.successPcm(RATE); }
+                    if (isSignalMode()) { pcm = SignalSound.successPcm(appCtx, RATE); }
                     else return;
                 }
                 playPcm(pcm, RATE);
