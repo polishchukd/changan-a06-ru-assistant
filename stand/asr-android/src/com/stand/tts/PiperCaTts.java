@@ -33,9 +33,9 @@ public class PiperCaTts implements ICaStreamTts {
     private static final boolean TONE_TEST = false;  // DIAGNOSTIC: emit a 440 Hz beep instead of speech.
     private static final boolean WAKE_CHIME = true;  // wake greeting → stock wakeup.wav chime instead of TTS phrase
     // Signal mode: play a short success/error tone instead of TeraTTS speech, saving ~370 MB of model
-    // assets and all :tts RSS. Activates automatically when TeraTTS assets are absent (TERA=0 build).
-    // Also force-activatable via system property "signal_tts"=1 (adb shell settings put global signal_tts 1)
-    // for testing without rebuilding.
+    // assets and all :tts RSS. ON BY DEFAULT on this branch (TeraTts.DEFAULT_SIGNAL_MODE) — see isSignalMode():
+    // active unless `settings put global signal_tts 0` AND voice models are present. FORCE_SIGNAL_MODE is a
+    // hard build-time override that disables voice entirely even with signal_tts=0 set.
     private static final boolean FORCE_SIGNAL_MODE = false;  // build-time override (set true to disable voice entirely)
     private static volatile android.content.Context appCtx;
     private volatile ICaTtsCallback cb;

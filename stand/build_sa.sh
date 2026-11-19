@@ -11,7 +11,9 @@
 #   TRIGGER=1|0       install broadcast trigger (default 1).
 #   SIGNAL=1|0        1 => signal mode: play short ok/err tones instead of TeraTTS speech;
 #                     skips assets/tera (~370 MB) and libonnxruntime4j_jni.so (~760 KB).
-#                     Runtime override: adb shell settings put global signal_tts 1 (or 0). default 0.
+#                     Runtime override: adb shell settings put global signal_tts 1 (force) / 0 (voice).
+#                     build.sh ships SIGNAL=1 TERA=0 (signal variant is this branch's default);
+#                     build_sa.sh alone keeps SIGNAL=0 unless set (so a bare voice build still works).
 set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/env.sh"
 SRC="${1:?src.apk}"; OUT="${2:?out.apk}"

@@ -80,17 +80,26 @@ public final class TeraTts {
      *  fall back to SignalSound instead of returning silence. */
     public static boolean isAvailable() { return engine != null; }
 
-    /** True when signal mode should be used: TeraTTS models absent (TERA=0) OR runtime override
-     *  `adb shell settings put global signal_tts 1`. PiperCaTts + TeraTts.speak both consult this. */
+    /** Build-time default for THIS branch (owner directive): the signal variant is ON by default.
+     *  Success/error tones replace TeraTTS speech, saving ~370 MB of model assets and all :tts RSS.
+     *  Voice builds (TERA=1) are the explicit opt-in via `adb shell settings put global signal_tts 0`. */
+    public static final boolean DEFAULT_SIGNAL_MODE = true;
+
+    /** True when signal mode should be used. Defaults to DEFAULT_SIGNAL_MODE (true on this branch);
+     *  runtime opt-out: `adb shell settings put global signal_tts 0` restores TeraTTS speech, but ONLY
+     *  when the voice models are actually present (TERA=1 build) — otherwise we still signal rather than
+     *  play silence. PiperCaTts + TeraTts.speak both consult this. */
     public static boolean isSignalMode() {
+        int pref = DEFAULT_SIGNAL_MODE ? 1 : 0;
         try {
-            if (appCtx != null && android.provider.Settings.Global.getInt(
-                    appCtx.getContentResolver(), "signal_tts", 0) == 1) return true;
+            if (appCtx != null) pref = android.provider.Settings.Global.getInt(
+                    appCtx.getContentResolver(), "signal_tts", pref);
         } catch (Throwable ignored) {}
-        if (appCtx == null) return true;
-        try {
+        if (pref == 1) return true;                    // signal mode (default or explicit)
+        try {                                          // pref==0 → user wants voice
+            if (appCtx == null) return DEFAULT_SIGNAL_MODE;
             String[] l = appCtx.getAssets().list(ASSET_DIR + "/models");
-            return l == null || l.length == 0;
+            return l == null || l.length == 0;         // no models → still signal, never silence
         } catch (Throwable t) { return true; }
     }
 
@@ -102,6 +111,10 @@ public final class TeraTts {
         // init() is called once per PiperCaTts instance (config maps several engines to it); guard so
         // engine load + greeting prewarm run exactly ONCE, not 3× (which stormed the CPU at startup).
         if (isTtsProcess() && STARTED.compareAndSet(false, true)) new Thread(new Runnable() { public void run() {
+            if (isSignalMode()) {   // default on this branch: never unpack ~370 MB models or load the graph
+                Log.i(TAG, "signal mode: TeraTTS engine not loaded (model unpack + RSS skipped)");
+                return;
+            }
             ensure();
             for (String g : PREWARM) {   // warm the engine + cache fixed greetings → instant on wake
                 try { synthPcm16(g, RATE); } catch (Throwable ignored) {}
@@ -250,7 +263,7 @@ public final class TeraTts {
     public static void speak(final String text) { speak(text, null); }
 
     /** Synthesize Russian text and play it on a background thread; run onDone after playback.
-     *  In signal mode (TERA=0 build, or engine failed to load) plays a success/error tone instead.
+     *  In signal mode (default on this branch — see isSignalMode()) plays a success/error tone instead.
      *  Heuristic: text containing "не умею" / "не понял" / "не могу" / "Записал" → error tone; all
      *  other texts (LLM answers, NLG confirmations, tips) → success tone. */
     public static void speak(final String text, final Runnable onDone) {
