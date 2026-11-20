@@ -9,6 +9,11 @@
 #                     car: set reachable IP, e.g. HOST=172.20.10.3:8080.
 #   RUSSIAN_ASR=0|1   1 => SettingsUtil.getLanguage()->4 (online iFlytek RU ASR). default 0/emu,1/car.
 #   TRIGGER=1|0       install broadcast trigger (default 1).
+#   SIGNAL=1|0        1 => signal mode: play short ok/err tones instead of TeraTTS speech;
+#                     skips assets/tera (~370 MB) and libonnxruntime4j_jni.so (~760 KB).
+#                     Runtime override: adb shell settings put global signal_tts 1 (force) / 0 (voice).
+#                     build.sh ships SIGNAL=1 TERA=0 (signal variant is this branch's default);
+#                     build_sa.sh alone keeps SIGNAL=0 unless set (so a bare voice build still works).
 set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/env.sh"
 SRC="${1:?src.apk}"; OUT="${2:?out.apk}"
@@ -302,12 +307,20 @@ if [ "${BRIDGE:-0}" = "1" ]; then
 fi
 
 # --- PIPER (repurposed): now ONLY the shared native JNI libs — libsherpa-onnx-jni.so (GigaAM ASR)
-#     + libonnxruntime4j_jni.so (TeraTTS). Piper RU TTS model dropped (TeraTTS is the sole voice). ---
+#     + libonnxruntime4j_jni.so (TeraTTS). Piper RU TTS model dropped (TeraTTS is the sole voice).
+#     In SIGNAL=1 (no TeraTTS) builds, libonnxruntime4j_jni.so is skipped (~760 KB saving). ---
 if [ "${PIPER:-0}" = "1" ]; then
   PDIR="$STAND_DIR/asr-android/piper"
-  echo "[build_sa] +JNI: sherpa-onnx + onnxruntime4j libs (no Piper model — TeraTTS is the voice)"
   mkdir -p "$wd/lib/arm64-v8a"
-  cp "$PDIR/jni/arm64-v8a/"*.so "$wd/lib/arm64-v8a/"
+  # libsherpa-onnx-jni.so — needed for GigaAM ASR (always include when PIPER=1)
+  cp "$PDIR/jni/arm64-v8a/libsherpa-onnx-jni.so" "$wd/lib/arm64-v8a/"
+  # libonnxruntime4j_jni.so — only needed for TeraTTS; skip in signal-mode builds (SIGNAL=1, TERA=0)
+  if [ "${TERA:-0}" = "1" ] || [ "${SIGNAL:-0}" != "1" ]; then
+    echo "[build_sa] +JNI: sherpa-onnx + onnxruntime4j libs (no Piper model — TeraTTS is the voice)"
+    cp "$PDIR/jni/arm64-v8a/libonnxruntime4j_jni.so" "$wd/lib/arm64-v8a/"
+  else
+    echo "[build_sa] +JNI: sherpa-onnx only (signal mode: TeraTTS JNI skipped)"
+  fi
   ( cd "$wd" && zip -q -0 -r _p.apk lib )
 fi
 
@@ -340,6 +353,16 @@ if [ "${WAKE_CHIME:-1}" = "1" ] && [ -f "$STAND_DIR/asr-android/assets/wake_chim
   ( cd "$wd" && zip -q _p.apk assets/stand/wake_chime.wav )
   echo "[build_sa] +wake chime: assets/stand/wake_chime.wav"
 fi
+# --- SIGNAL WAV: owner-provided ok/err sounds (~340 KB raw, deflate-compressed in APK) -> assets/stand/
+#     signal_{success,error}.wav (SignalSound loads them; falls back to synthesized tones if absent).
+#     Shipped in ALL builds so the runtime `settings put global signal_tts 1` toggle uses real sounds too.
+for sig in success error; do
+  if [ -f "$STAND_DIR/asr-android/assets/signal_$sig.wav" ]; then
+    mkdir -p "$wd/assets/stand"; cp "$STAND_DIR/asr-android/assets/signal_$sig.wav" "$wd/assets/stand/signal_$sig.wav"
+    ( cd "$wd" && zip -q _p.apk "assets/stand/signal_$sig.wav" )
+    echo "[build_sa] +signal sound: assets/stand/signal_$sig.wav"
+  fi
+done
 
 # --- LICENSE/NOTICE: bundle the legal notice into the APK (assets/NOTICE.txt) so it ships in the
 #     published binary and is visible on unpack. Copyright (c) 2026 Tecrow, PolyForm Noncommercial 1.0.0.

@@ -75,6 +75,34 @@ public final class TeraTts {
         return appCtx;
     }
 
+    /** True when TeraTTS neural engine is loaded and ready for synthesis.
+     *  False when assets/tera is absent (TERA=0 build) or the engine failed to load → callers can
+     *  fall back to SignalSound instead of returning silence. */
+    public static boolean isAvailable() { return engine != null; }
+
+    /** Build-time default for THIS branch (owner directive): the signal variant is ON by default.
+     *  Success/error tones replace TeraTTS speech, saving ~370 MB of model assets and all :tts RSS.
+     *  Voice builds (TERA=1) are the explicit opt-in via `adb shell settings put global signal_tts 0`. */
+    public static final boolean DEFAULT_SIGNAL_MODE = true;
+
+    /** True when signal mode should be used. Defaults to DEFAULT_SIGNAL_MODE (true on this branch);
+     *  runtime opt-out: `adb shell settings put global signal_tts 0` restores TeraTTS speech, but ONLY
+     *  when the voice models are actually present (TERA=1 build) — otherwise we still signal rather than
+     *  play silence. PiperCaTts + TeraTts.speak both consult this. */
+    public static boolean isSignalMode() {
+        int pref = DEFAULT_SIGNAL_MODE ? 1 : 0;
+        try {
+            if (appCtx != null) pref = android.provider.Settings.Global.getInt(
+                    appCtx.getContentResolver(), "signal_tts", pref);
+        } catch (Throwable ignored) {}
+        if (pref == 1) return true;                    // signal mode (default or explicit)
+        try {                                          // pref==0 → user wants voice
+            if (appCtx == null) return DEFAULT_SIGNAL_MODE;
+            String[] l = appCtx.getAssets().list(ASSET_DIR + "/models");
+            return l == null || l.length == 0;         // no models → still signal, never silence
+        } catch (Throwable t) { return true; }
+    }
+
     private static final java.util.concurrent.atomic.AtomicBoolean STARTED =
             new java.util.concurrent.atomic.AtomicBoolean(false);
 
@@ -83,6 +111,10 @@ public final class TeraTts {
         // init() is called once per PiperCaTts instance (config maps several engines to it); guard so
         // engine load + greeting prewarm run exactly ONCE, not 3× (which stormed the CPU at startup).
         if (isTtsProcess() && STARTED.compareAndSet(false, true)) new Thread(new Runnable() { public void run() {
+            if (isSignalMode()) {   // default on this branch: never unpack ~370 MB models or load the graph
+                Log.i(TAG, "signal mode: TeraTTS engine not loaded (model unpack + RSS skipped)");
+                return;
+            }
             ensure();
             for (String g : PREWARM) {   // warm the engine + cache fixed greetings → instant on wake
                 try { synthPcm16(g, RATE); } catch (Throwable ignored) {}
@@ -230,19 +262,48 @@ public final class TeraTts {
 
     public static void speak(final String text) { speak(text, null); }
 
-    /** Synthesize Russian text and play it on a background thread; run onDone after playback. */
+    /** Synthesize Russian text and play it on a background thread; run onDone after playback.
+     *  In signal mode (default on this branch — see isSignalMode()) plays a success/error tone instead.
+     *  Heuristic: text containing "не умею" / "не понял" / "не могу" / "Записал" → error tone; all
+     *  other texts (LLM answers, NLG confirmations, tips) → success tone. */
     public static void speak(final String text, final Runnable onDone) {
         if (text == null || text.trim().isEmpty()) { if (onDone != null) runQuiet(onDone); return; }
         if (!canSpeak()) { if (onDone != null) runQuiet(onDone); return; }   // wrong process → skip
+        // Signal-mode fallback: no engine → play a tone directly via AudioTrack.
+        final boolean sigMode = isSignalMode();
+        if (sigMode) {
+            new Thread(new Runnable() { public void run() {
+                try {
+                    boolean err = isFailureText(text);
+                    byte[] pcm = err ? SignalSound.errorPcm(appCtx, RATE) : SignalSound.successPcm(appCtx, RATE);
+                    Log.i(TAG, "speak signal-mode: " + (err ? "error" : "success") + " tone for: " + text);
+                    if (pcm.length > 0) playPcm(pcm, RATE);
+                } catch (Throwable t) { Log.e(TAG, "speak signal", t); }
+                finally { if (onDone != null) runQuiet(onDone); }
+            }}).start();
+            return;
+        }
         new Thread(new Runnable() { public void run() {
             try {
                 byte[] pcm = synthPcm16(text, RATE);   // ttsNormalize + cache applied inside
-                if (pcm.length == 0) return;
+                if (pcm.length == 0) {
+                    // Engine present but returned empty (transient error) — also use signal if assets gone
+                    if (isSignalMode()) { pcm = SignalSound.successPcm(appCtx, RATE); }
+                    else return;
+                }
                 playPcm(pcm, RATE);
             } catch (Throwable t) { Log.e(TAG, "speak", t); }
             finally { if (onDone != null) runQuiet(onDone); }
         }}).start();
     }
+
+    /** Heuristic: does this RU text indicate a failure/unknown reply? Used for signal choice. */
+    private static boolean isFailureText(String t) {
+        if (t == null) return false;
+        return t.contains("не умею") || t.contains("не понял") || t.contains("не могу")
+                || t.contains("Записал") || t.contains("не удалось") || t.contains("Пока не");
+    }
+
     private static void runQuiet(Runnable r) { try { r.run(); } catch (Throwable ignored) {} }
 
     /** Stream 16-bit mono PCM through AudioTrack (blocks ~duration+250 ms). */
