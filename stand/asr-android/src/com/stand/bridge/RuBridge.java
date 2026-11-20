@@ -204,7 +204,7 @@ public final class RuBridge {
     private static volatile int wakeZone = 1;        // detected speaking zone (SrBaseSession.getCurrentDirect: 1=driver,2=passenger,3/4=rear,5=rear-mid)
     // Force offline: online chat backend isn't ready, so unrecognized phrases give a local RU reply
     // instead of hitting the cloud. Flip to false once the LLM backend is live.
-    private static final boolean OFFLINE_ONLY = false;  // ONLINE: free-form chat/knowledge → our backend (sda.tecrow.org)
+    private static final boolean OFFLINE_ONLY = true;   // FULL OFFLINE: unrecognized phrases → local RU reply, no backend call
 
     // Online conversational path via the NATIVE (device-signed) Dubhe cloud + MyMemory translation:
     // a free-form phrase the rule-based ru2zh can't map is translated RU->ZH (MyMemory) and injected
@@ -458,6 +458,7 @@ public final class RuBridge {
             new Thread(new Runnable() { public void run() {
                 try {   // prime backend dicts + status + installed-apps cache (off the request hot path)
                     userAppPackages();   // warm the app allowlist now (~seconds) so requests don't pay it
+                    if (OFFLINE_ONLY) return;   // full-offline: no backend to prime
                     try { Thread.sleep(4000); } catch (Throwable ignored) {}
                     pushDicts();
                     pushStatus();
@@ -976,6 +977,7 @@ public final class RuBridge {
      *  at attempt < MAX the backend MAY return ONE corrected zhCommand (the LLM's second guess); at
      *  attempt >= MAX it MUST answer without a command. Bounded — one retry, never a loop. */
     static void sendToCloud(final String text, final boolean localFailed, final String failedCommand, final int attempt) {
+        if (OFFLINE_ONLY) { Log.i(TAG, "offline: sendToCloud skipped for: " + text); return; }   // no backend in full-offline builds
         if (!isMainProcess()) return;   // one backend call + one TTS, in the process where TtsClient is ready
         new Thread(new Runnable() { public void run() {
             try {
