@@ -21,3 +21,6 @@ ru2zh/translate-task/tests/build/
 # os / editor
 .DS_Store
 *.swp
+
+apks/
+downloads/
