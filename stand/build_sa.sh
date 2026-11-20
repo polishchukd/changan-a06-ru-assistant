@@ -353,7 +353,7 @@ if [ "${WAKE_CHIME:-1}" = "1" ] && [ -f "$STAND_DIR/asr-android/assets/wake_chim
   ( cd "$wd" && zip -q _p.apk assets/stand/wake_chime.wav )
   echo "[build_sa] +wake chime: assets/stand/wake_chime.wav"
 fi
-# --- SIGNAL WAV: owner-provided ok/err sounds (~340 KB raw, deflate-compressed in APK) -> assets/stand/
+# --- SIGNAL WAV: owner-provided ok/err sounds (~340 KB raw before deflate; ~180 KB stored in the APK) -> assets/stand/
 #     signal_{success,error}.wav (SignalSound loads them; falls back to synthesized tones if absent).
 #     Shipped in ALL builds so the runtime `settings put global signal_tts 1` toggle uses real sounds too.
 for sig in success error; do

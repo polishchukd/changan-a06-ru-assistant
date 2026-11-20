@@ -75,11 +75,6 @@ public final class TeraTts {
         return appCtx;
     }
 
-    /** True when TeraTTS neural engine is loaded and ready for synthesis.
-     *  False when assets/tera is absent (TERA=0 build) or the engine failed to load → callers can
-     *  fall back to SignalSound instead of returning silence. */
-    public static boolean isAvailable() { return engine != null; }
-
     /** Build-time default for THIS branch (owner directive): the signal variant is ON by default.
      *  Success/error tones replace TeraTTS speech, saving ~370 MB of model assets and all :tts RSS.
      *  Voice builds (TERA=1) are the explicit opt-in via `adb shell settings put global signal_tts 0`. */
@@ -89,7 +84,25 @@ public final class TeraTts {
      *  runtime opt-out: `adb shell settings put global signal_tts 0` restores TeraTTS speech, but ONLY
      *  when the voice models are actually present (TERA=1 build) — otherwise we still signal rather than
      *  play silence. PiperCaTts + TeraTts.speak both consult this. */
-    public static boolean isSignalMode() {
+    public static boolean isSignalMode() { return isSignalMode(System.currentTimeMillis()); }
+
+    // isSignalMode() is consulted on every sendText/speak; the Settings.Global read + assets.list are
+    // cheap but not free, so cache the result briefly. signal_tts can change at runtime via
+    // `settings put global`, so we re-read after SIGNAL_MODE_TTL_MS rather than cache for the process life.
+    private static final long SIGNAL_MODE_TTL_MS = 2000L;
+    private static volatile boolean sigModeCached;
+    private static volatile long sigModeCachedAt;
+
+    private static boolean isSignalMode(long nowMs) {
+        long age = nowMs - sigModeCachedAt;
+        if (sigModeCachedAt != 0 && age >= 0 && age < SIGNAL_MODE_TTL_MS) return sigModeCached;
+        boolean result = computeSignalMode();
+        sigModeCached = result;
+        sigModeCachedAt = nowMs;
+        return result;
+    }
+
+    private static boolean computeSignalMode() {
         int pref = DEFAULT_SIGNAL_MODE ? 1 : 0;
         try {
             if (appCtx != null) pref = android.provider.Settings.Global.getInt(
@@ -264,7 +277,7 @@ public final class TeraTts {
 
     /** Synthesize Russian text and play it on a background thread; run onDone after playback.
      *  In signal mode (default on this branch — see isSignalMode()) plays a success/error tone instead.
-     *  Heuristic: text containing "не умею" / "не понял" / "не могу" / "Записал" → error tone; all
+     *  Heuristic: text containing "не умею" / "не понял" / "не могу" / "не удалось" / "Пока не" → error tone; all
      *  other texts (LLM answers, NLG confirmations, tips) → success tone. */
     public static void speak(final String text, final Runnable onDone) {
         if (text == null || text.trim().isEmpty()) { if (onDone != null) runQuiet(onDone); return; }
@@ -287,9 +300,12 @@ public final class TeraTts {
             try {
                 byte[] pcm = synthPcm16(text, RATE);   // ttsNormalize + cache applied inside
                 if (pcm.length == 0) {
-                    // Engine present but returned empty (transient error) — also use signal if assets gone
-                    if (isSignalMode()) { pcm = SignalSound.successPcm(appCtx, RATE); }
-                    else return;
+                    // Engine present but returned empty (transient error) — fall back to a signal tone
+                    // (never silence), picking err/ok from the text like the signal-mode path does.
+                    if (isSignalMode()) {
+                        boolean err = isFailureText(text);
+                        pcm = err ? SignalSound.errorPcm(appCtx, RATE) : SignalSound.successPcm(appCtx, RATE);
+                    } else return;
                 }
                 playPcm(pcm, RATE);
             } catch (Throwable t) { Log.e(TAG, "speak", t); }
@@ -300,8 +316,11 @@ public final class TeraTts {
     /** Heuristic: does this RU text indicate a failure/unknown reply? Used for signal choice. */
     private static boolean isFailureText(String t) {
         if (t == null) return false;
+        // "Записал(а)" alone is NOT a failure marker: "Записала, может позже смогу помочь" is a
+        // success confirmation. The failure phrase "Пока не умею это. Записал." is already caught
+        // by "не умею"/"Пока не".
         return t.contains("не умею") || t.contains("не понял") || t.contains("не могу")
-                || t.contains("Записал") || t.contains("не удалось") || t.contains("Пока не");
+                || t.contains("не удалось") || t.contains("Пока не");
     }
 
     private static void runQuiet(Runnable r) { try { r.run(); } catch (Throwable ignored) {} }

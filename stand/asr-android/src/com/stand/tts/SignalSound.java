@@ -35,44 +35,43 @@ public final class SignalSound {
 
     private SignalSound() {}
 
-    // ---- Cache (same LRU approach as TeraTts.CACHE, but only 2 entries) --------------------------------
-    private static volatile byte[] okCache;
-    private static volatile byte[] errCache;
+    // ---- Cache keyed by output rate (decoded/synthesized PCM is rate-specific; keying by rate keeps a
+    //      future caller using a different rate from getting wrong-pitch audio). Callers use one rate today.
+    private static final java.util.Map<Integer, byte[]> OK_CACHE = new java.util.HashMap<>();
+    private static final java.util.Map<Integer, byte[]> ERR_CACHE = new java.util.HashMap<>();
 
     /** Success signal for command execution: real WAV asset if bundled, synthesized chime otherwise.
-     *  Thread-safe; decoded once per process. */
+     *  Thread-safe; decoded once per (process, rate). */
     public static byte[] successPcm(Context ctx, int rate) {
-        byte[] c = okCache;
-        if (c != null) return c;
         synchronized (SignalSound.class) {
-            if (okCache != null) return okCache;
+            byte[] c = OK_CACHE.get(rate);
+            if (c != null) return c;
             byte[] a = decodeAsset(ctx, "stand/signal_success.wav", rate, SUCCESS_GAIN);
-            okCache = a != null ? a : buildSuccess(rate);
-            return okCache;
+            c = a != null ? a : buildSuccess(rate);
+            OK_CACHE.put(rate, c);
+            return c;
         }
     }
 
     /** Error signal for failed/unrecognised command: real WAV asset if bundled, synthesized beep otherwise. */
     public static byte[] errorPcm(Context ctx, int rate) {
-        byte[] c = errCache;
-        if (c != null) return c;
         synchronized (SignalSound.class) {
-            if (errCache != null) return errCache;
+            byte[] c = ERR_CACHE.get(rate);
+            if (c != null) return c;
             byte[] a = decodeAsset(ctx, "stand/signal_error.wav", rate, ERROR_GAIN);
-            errCache = a != null ? a : buildError(rate);
-            return errCache;
+            c = a != null ? a : buildError(rate);
+            ERR_CACHE.put(rate, c);
+            return c;
         }
     }
 
     /** Decode a bundled signal WAV to 16-bit mono PCM at outRate, or null if absent/undecodable. */
     private static byte[] decodeAsset(Context ctx, String path, int outRate, float gain) {
         if (ctx == null) return null;
-        try {
-            InputStream in = ctx.getAssets().open(path);
+        try (InputStream in = ctx.getAssets().open(path)) {
             ByteArrayOutputStream bo = new ByteArrayOutputStream();
             byte[] buf = new byte[16384]; int n;
-            while ((n = in.read(buf)) > 0) bo.write(buf, 0, n);
-            in.close();
+            while ((n = in.read(buf)) >= 0) bo.write(buf, 0, n);
             byte[] pcm = WakeChime.wavToPcm16Mono(bo.toByteArray(), outRate);
             applyGain(pcm, gain);
             Log.i(TAG, "decoded " + path + " -> " + pcm.length + " bytes @" + outRate);

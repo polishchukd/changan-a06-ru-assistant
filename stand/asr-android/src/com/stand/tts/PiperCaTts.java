@@ -120,11 +120,12 @@ public class PiperCaTts implements ICaStreamTts {
                         if (ch != null) { pcm = WakeChime.mix(pcm, ch); Log.i(TAG, "voice-wake greeting + chime mixed (" + pcm.length + " bytes)"); }
                     }
                     // Safety net: if synthesis returned empty (engine not ready / OOM / model error)
-                    // and TeraTTS assets are absent, fall back to the success signal so the driver is
-                    // never left without audible feedback.
+                    // and TeraTTS assets are absent, fall back to a signal tone so the driver is never
+                    // left without audible feedback — err/ok chosen from the raw NLG like the signal path.
                     if (pcm.length == 0 && TeraTts.isSignalMode()) {
-                        Log.w(TAG, "sendText: synth returned empty + no models → signal fallback: " + ru);
-                        pcm = SignalSound.successPcm(appCtx, RATE);
+                        boolean fail = com.stand.bridge.RuBridge.isFailureNlg(text);
+                        Log.w(TAG, "sendText: synth returned empty + no models → " + (fail ? "error" : "success") + " signal fallback: " + ru);
+                        pcm = fail ? SignalSound.errorPcm(appCtx, RATE) : SignalSound.successPcm(appCtx, RATE);
                     }
                 }
             }
