@@ -23,7 +23,7 @@ Independent modification — **not affiliated with, endorsed by, or produced by 
   does not know (or the car refused) go to an LLM backend (`BACKEND` in `RuBridge.java`). It may answer
   with text, a ready NLU intent, a Chinese command to try, or launch a user‑installed app (e.g. a
   Yandex Navigator route). With `OFFLINE_ONLY=true` or no network the assistant is fully offline.
-- **Wake** — the wake word «нихао» (你好) or the steering‑wheel key. The key plays a short chime and you
+- **Wake** — the wake word «сяоань» (小安) or the steering‑wheel key. The key plays a short chime and you
   can talk right away; the wake word plays the chime together with the spoken greeting.
 - **One‑step self‑install** — the app runs as `uid=system` on Permissive SELinux, so on first launch it
   registers its TTS engine and sets the default wake word itself; no manual `adb` config editing.
@@ -81,7 +81,7 @@ adb shell pm install -r -d -g -t /data/local/tmp/sa.apk
 adb shell am force-stop com.incall.apps.speechassistant
 ```
 
-Wake with **«нихао» (你好)** and speak, e.g. «включи климат», «какая погода в шанхае».
+Wake with **«сяоань» (小安)** and speak, e.g. «включи климат», «какая погода в шанхае».
 
 ## Tests
 

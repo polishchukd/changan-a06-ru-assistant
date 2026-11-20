@@ -37,7 +37,7 @@ adb push $NAME /data/local/tmp/sa.apk
 adb shell pm install -r -d -g -t /data/local/tmp/sa.apk
 adb shell am force-stop com.incall.apps.speechassistant
 \`\`\`
-Wake with «нихао» or the steering-wheel key. Command list: COMMANDS.md. Revert: \`adb shell pm uninstall com.incall.apps.speechassistant\`.
+Wake with «сяоань» or the steering-wheel key. Command list: COMMANDS.md. Revert: \`adb shell pm uninstall com.incall.apps.speechassistant\`.
 SHA-256: $(cut -d' ' -f1 "$OUT.sha256")"
 
 if gh release view "$TAG" -R "$(git -C "$HERE" remote get-url origin)" >/dev/null 2>&1; then

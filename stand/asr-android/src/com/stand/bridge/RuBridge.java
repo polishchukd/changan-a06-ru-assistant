@@ -77,19 +77,19 @@ public final class RuBridge {
         catch (Throwable t) { return false; }
     }
 
-    /** Default the custom wake word to «你好» so users can activate the assistant by saying "нихао".
+    /** Default the custom wake word to «小安» so users can activate the assistant by saying "сяоань".
      *  Stored in Settings.Global "voice_custom_name"; a ContentObserver re-registers it with the IVW
      *  engine. Only set when empty — never clobber a word the user chose. App is uid=system → allowed. */
     static void ensureCustomWakeword() {
         try {
-            // Default custom wake word «你好你好» (nǐ hǎo nǐ hǎo = «нихао нихао») — easiest for RU speakers.
+            // Default custom wake word «小安» (xiǎo ān = «сяоань») — the stock Changan assistant name.
             // Applied ONCE via a fresh marker (so it runs on this build), then the user's choice is kept.
             android.content.SharedPreferences sp = appCtx.getSharedPreferences("stand", 0);
-            if (sp.getBoolean("wakeword_nihao2", false)) return;
+            if (sp.getBoolean("wakeword_xiaoan", false)) return;
             android.content.ContentResolver cr = appCtx.getContentResolver();
-            boolean ok = android.provider.Settings.Global.putString(cr, "voice_custom_name", "你好你好"); // «нихао нихао»
-            sp.edit().putBoolean("wakeword_nihao2", true).apply();
-            Log.i(TAG, "wakeword: default «你好你好» (нихао нихао) applied once (" + ok + ")");
+            boolean ok = android.provider.Settings.Global.putString(cr, "voice_custom_name", "小安"); // «сяоань»
+            sp.edit().putBoolean("wakeword_xiaoan", true).apply();
+            Log.i(TAG, "wakeword: default «小安» (сяоань) applied once (" + ok + ")");
         } catch (Throwable t) { Log.e(TAG, "ensureCustomWakeword", t); }
     }
 
